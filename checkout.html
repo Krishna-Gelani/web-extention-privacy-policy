@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processing Payment...</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #050505; color: white; }
+        .loader { border: 4px solid rgba(255, 255, 255, 0.1); border-top: 4px solid #9d4edd; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .container { text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="loader"></div>
+        <h2>Secure Checkout</h2>
+        <p>Please do not close this window.</p>
+    </div>
+
+    <script>
+        // Parse URL parameters passed from content.js
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('userId');
+        const userEmail = urlParams.get('userEmail');
+        const userPhone = urlParams.get('userPhone');
+        const keyId = urlParams.get('keyId');
+        const credits = parseInt(urlParams.get('credits')) || 0;
+        const price = parseInt(urlParams.get('price')) || 0;
+        const appliedPromoCode = urlParams.get('appliedPromoCode') || '';
+
+        if (!keyId || !price) {
+            alert('Invalid checkout parameters.');
+            window.close();
+        }
+
+        const options = {
+            "key": keyId,
+            "amount": price * 100, // Razorpay takes amount in paise
+            "currency": "INR",
+            "name": "Meesho AI Optimizer",
+            "description": `Purchase ${credits} Credits`,
+            "image": "https://krishna-gelani.github.io/web-extention-privacy-policy/icon.png", // Fallback icon
+            "handler": function (response) {
+                // Send the success response back to the extension (content.js)
+                if (window.opener) {
+                    window.opener.postMessage({
+                        type: 'RAZORPAY_SUCCESS',
+                        paymentId: response.razorpay_payment_id,
+                        userId: userId,
+                        credits: credits,
+                        price: price,
+                        appliedPromoCode: appliedPromoCode
+                    }, "*"); // We use "*" because content.js runs inside Meesho's origin
+                }
+                
+                document.querySelector('.container').innerHTML = '<h2>✅ Payment Successful!</h2><p>You can close this window.</p>';
+                setTimeout(() => window.close(), 2000);
+            },
+            "prefill": {
+                "name": "Meesho Seller",
+                "email": userEmail,
+                "contact": userPhone
+            },
+            "theme": {
+                "color": "#9d4edd"
+            },
+            "modal": {
+                "ondismiss": function() {
+                    window.close(); // Close the popup if user cancels
+                }
+            }
+        };
+
+        // Launch Razorpay
+        const rzp = new Razorpay(options);
+        rzp.on('payment.failed', function (response){
+            alert('Payment Failed: ' + response.error.description);
+            window.close();
+        });
+        
+        // Open automatically
+        rzp.open();
+    </script>
+</body>
+</html>
