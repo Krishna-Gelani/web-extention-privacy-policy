@@ -24,10 +24,10 @@
         const userId = urlParams.get('userId');
         const userEmail = urlParams.get('userEmail');
         const userPhone = urlParams.get('userPhone');
-        const keyId = urlParams.get('keyId');
+        const keyId = urlParams.get('keyId') || "rzp_live_T2ds8o8cbXH2FE";
         const extId = urlParams.get('extId') || "nffkekgmimnjlpjfnnnhhpcdcdhgmhaf";
         const credits = parseInt(urlParams.get('credits')) || 0;
-        const price = parseInt(urlParams.get('price')) || 0;
+        const price = parseFloat(urlParams.get('price')) || 0;
         const appliedPromoCode = urlParams.get('appliedPromoCode') || '';
 
         if (!keyId || !price) {
@@ -43,20 +43,33 @@
             "description": `Purchase ${credits} Credits`,
             "image": "https://krishna-gelani.github.io/web-extention-privacy-policy/icon.png", // Fallback icon
             "handler": function (response) {
-                // Send the success response back to the extension (background.js)
-                if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
-                    chrome.runtime.sendMessage(extId, {
-                        type: 'RAZORPAY_SUCCESS',
-                        paymentId: response.razorpay_payment_id,
-                        userId: userId,
-                        credits: credits,
-                        price: price,
-                        appliedPromoCode: appliedPromoCode
-                    });
-                }
+                const paymentData = {
+                    type: 'RAZORPAY_SUCCESS',
+                    paymentId: response.razorpay_payment_id,
+                    userId: userId,
+                    credits: credits,
+                    price: price,
+                    appliedPromoCode: appliedPromoCode
+                };
                 
-                document.querySelector('.container').innerHTML = '<h2>✅ Payment Successful!</h2><p>You can close this window.</p>';
-                setTimeout(() => window.close(), 2000);
+                window.claimCredits = function() {
+                    document.querySelector('.container').innerHTML = '<div class="loader"></div><h2>Processing...</h2><p>Please wait.</p>';
+                    if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+                        chrome.runtime.sendMessage(extId, paymentData, function(extResponse) {
+                            if (chrome.runtime.lastError || !extResponse || !extResponse.success) {
+                                document.querySelector('.container').innerHTML = '<h2>⚠️ Extension Disconnected</h2><p>Please <b>REFRESH your Meesho page</b> and then click below to try again.</p><br><button onclick="window.claimCredits()" style="padding:10px 20px; background:#9d4edd; color:white; border:none; border-radius:5px; cursor:pointer;">Claim Credits</button>';
+                            } else {
+                                document.querySelector('.container').innerHTML = '<h2>✅ Payment Successful!</h2><p>Your credits have been added. You can close this window.</p>';
+                                setTimeout(() => window.close(), 3000);
+                            }
+                        });
+                    } else {
+                        document.querySelector('.container').innerHTML = '<h2>⚠️ Error</h2><p>Chrome extension API not found. Please contact support.</p>';
+                    }
+                };
+                
+                // Trigger claim immediately on success
+                window.claimCredits();
             },
             "prefill": {
                 "name": "Meesho Seller",
