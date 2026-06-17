@@ -20,12 +20,12 @@
     </div>
 
     <script>
-        // Parse URL parameters passed from content.js
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('userId');
         const userEmail = urlParams.get('userEmail');
         const userPhone = urlParams.get('userPhone');
         const keyId = urlParams.get('keyId');
+        const extId = urlParams.get('extId') || "nffkekgmimnjlpjfnnnhhpcdcdhgmhaf";
         const credits = parseInt(urlParams.get('credits')) || 0;
         const price = parseInt(urlParams.get('price')) || 0;
         const appliedPromoCode = urlParams.get('appliedPromoCode') || '';
@@ -43,16 +43,16 @@
             "description": `Purchase ${credits} Credits`,
             "image": "https://krishna-gelani.github.io/web-extention-privacy-policy/icon.png", // Fallback icon
             "handler": function (response) {
-                // Send the success response back to the extension (content.js)
-                if (window.opener) {
-                    window.opener.postMessage({
+                // Send the success response back to the extension (background.js)
+                if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage(extId, {
                         type: 'RAZORPAY_SUCCESS',
                         paymentId: response.razorpay_payment_id,
                         userId: userId,
                         credits: credits,
                         price: price,
                         appliedPromoCode: appliedPromoCode
-                    }, "*"); // We use "*" because content.js runs inside Meesho's origin
+                    });
                 }
                 
                 document.querySelector('.container').innerHTML = '<h2>✅ Payment Successful!</h2><p>You can close this window.</p>';
