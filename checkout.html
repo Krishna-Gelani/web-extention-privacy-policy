@@ -1,17 +1,49 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Processing Payment...</title>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #050505; color: white; }
-        .loader { border: 4px solid rgba(255, 255, 255, 0.1); border-top: 4px solid #9d4edd; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 20px; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .container { text-align: center; }
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #050505;
+            color: white;
+        }
+
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #9d4edd;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .container {
+            text-align: center;
+        }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="loader"></div>
@@ -24,10 +56,12 @@
         const userId = urlParams.get('userId');
         const userEmail = urlParams.get('userEmail');
         const userPhone = urlParams.get('userPhone');
-        const keyId = urlParams.get('keyId') || "rzp_live_T2ds8o8cbXH2FE";
+        const keyId = urlParams.get('keyId') || "rzp_test_SqpCCHIeMEtrgq";
         const extId = urlParams.get('extId') || "nffkekgmimnjlpjfnnnhhpcdcdhgmhaf";
         const credits = parseInt(urlParams.get('credits')) || 0;
+        const days = parseInt(urlParams.get('days')) || 0;
         const price = parseFloat(urlParams.get('price')) || 0;
+        const planName = urlParams.get('planName') || '';
         const appliedPromoCode = urlParams.get('appliedPromoCode') || '';
 
         if (!keyId || !price) {
@@ -37,10 +71,10 @@
 
         const options = {
             "key": keyId,
-            "amount": price * 100, // Razorpay takes amount in paise
+            "amount": Math.round(price * 100), // Razorpay takes amount in paise (must be integer)
             "currency": "INR",
             "name": "Meesho AI Optimizer",
-            "description": `Purchase ${credits} Credits`,
+            "description": planName || (days > 0 ? `Unlimited Access for ${days} Days` : `Purchase ${credits} Credits`),
             "image": "https://krishna-gelani.github.io/web-extention-privacy-policy/icon.png", // Fallback icon
             "handler": function (response) {
                 const paymentData = {
@@ -48,16 +82,20 @@
                     paymentId: response.razorpay_payment_id,
                     userId: userId,
                     credits: credits,
+                    days: days,
                     price: price,
+                    planName: planName,
                     appliedPromoCode: appliedPromoCode
                 };
-                
-                window.claimCredits = function() {
+
+                window.claimCredits = function () {
                     document.querySelector('.container').innerHTML = '<div class="loader"></div><h2>Processing...</h2><p>Please wait.</p>';
                     if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
-                        chrome.runtime.sendMessage(extId, paymentData, function(extResponse) {
-                            if (chrome.runtime.lastError || !extResponse || !extResponse.success) {
+                        chrome.runtime.sendMessage(extId, paymentData, function (extResponse) {
+                            if (chrome.runtime.lastError || !extResponse) {
                                 document.querySelector('.container').innerHTML = '<h2>⚠️ Extension Disconnected</h2><p>Please <b>REFRESH your Meesho page</b> and then click below to try again.</p><br><button onclick="window.claimCredits()" style="padding:10px 20px; background:#9d4edd; color:white; border:none; border-radius:5px; cursor:pointer;">Claim Credits</button>';
+                            } else if (!extResponse.success) {
+                                document.querySelector('.container').innerHTML = `<h2>⚠️ Payment Log Error</h2><p>${extResponse.error || "Unknown error occurred"}</p><p>Please contact support or click claim to retry.</p><br><button onclick="window.claimCredits()" style="padding:10px 20px; background:#9d4edd; color:white; border:none; border-radius:5px; cursor:pointer;">Retry Claim</button>`;
                             } else {
                                 document.querySelector('.container').innerHTML = '<h2>✅ Payment Successful!</h2><p>Your credits have been added. You can close this window.</p>';
                                 setTimeout(() => window.close(), 3000);
@@ -67,7 +105,7 @@
                         document.querySelector('.container').innerHTML = '<h2>⚠️ Error</h2><p>Chrome extension API not found. Please contact support.</p>';
                     }
                 };
-                
+
                 // Trigger claim immediately on success
                 window.claimCredits();
             },
@@ -80,7 +118,7 @@
                 "color": "#9d4edd"
             },
             "modal": {
-                "ondismiss": function() {
+                "ondismiss": function () {
                     window.close(); // Close the popup if user cancels
                 }
             }
@@ -88,13 +126,14 @@
 
         // Launch Razorpay
         const rzp = new Razorpay(options);
-        rzp.on('payment.failed', function (response){
+        rzp.on('payment.failed', function (response) {
             alert('Payment Failed: ' + response.error.description);
             window.close();
         });
-        
+
         // Open automatically
         rzp.open();
     </script>
 </body>
+
 </html>
