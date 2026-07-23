@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Success</title>
+    <!-- Include Supabase JS SDK so the helper content script can utilize it -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #050505;
+            color: white;
+        }
+
+        .container {
+            text-align: center;
+            background: #111111;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            border: 1px solid #222222;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .icon {
+            font-size: 64px;
+            color: #10b981;
+            margin-bottom: 20px;
+            animation: scaleUp 0.4s ease-out;
+        }
+
+        @keyframes scaleUp {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+
+        h2 {
+            margin: 0 0 10px 0;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        p {
+            color: #aaaaaa;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 25px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #9d4edd;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #7b2cbf;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="icon" id="status-icon">⏳</div>
+        <h2 id="status-title">Verifying Payment</h2>
+        <p id="status-message">Please wait while we verify your transaction and add credits to your account. This window will close automatically.</p>
+        <button id="retry-btn" class="btn" style="display: none;">Retry Verification</button>
+    </div>
+
+    <script>
+        // Extract payment order ID from Cashfree's redirect parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const orderId = urlParams.get('order_id') || urlParams.get('cf_id') || 'CF_' + Date.now();
+
+        // Callback function triggered by our extension helper script
+        window.onPaymentVerified = function(success, errorMsg) {
+            const iconEl = document.getElementById('status-icon');
+            const titleEl = document.getElementById('status-title');
+            const messageEl = document.getElementById('status-message');
+            const retryBtn = document.getElementById('retry-btn');
+
+            if (success) {
+                iconEl.innerText = "✅";
+                titleEl.innerText = "Payment Successful!";
+                messageEl.innerText = "Your credits have been added successfully. You can close this window now.";
+                retryBtn.style.display = "none";
+                
+                // Automatically close the window after a brief delay
+                setTimeout(() => {
+                    window.close();
+                }, 3000);
+            } else {
+                iconEl.innerText = "⚠️";
+                titleEl.innerText = "Verification Failed";
+                messageEl.innerHTML = `We couldn't verify this payment automatically: <b>${errorMsg || "Unknown error"}</b>.<br><br>Please check your internet connection or click below to retry.`;
+                retryBtn.style.display = "inline-block";
+                retryBtn.onclick = () => {
+                    window.location.reload();
+                };
+            }
+        };
+    </script>
+</body>
+
+</html>
