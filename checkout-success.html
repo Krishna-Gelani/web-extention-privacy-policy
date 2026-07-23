@@ -5,8 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Payment Success</title>
-    <!-- Include Supabase JS SDK so the helper content script can utilize it -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -78,42 +76,89 @@
     <div class="container">
         <div class="icon" id="status-icon">⏳</div>
         <h2 id="status-title">Verifying Payment</h2>
-        <p id="status-message">Please wait while we verify your transaction and add credits to your account. This window will close automatically.</p>
+        <p id="status-message">Please wait while we verify your transaction and add credits to your account. Do not close this window.</p>
         <button id="retry-btn" class="btn" style="display: none;">Retry Verification</button>
     </div>
 
     <script>
         // Extract payment order ID from Cashfree's redirect parameters
         const urlParams = new URLSearchParams(window.location.search);
-        const orderId = urlParams.get('order_id') || urlParams.get('cf_id') || 'CF_' + Date.now();
+        const orderId = urlParams.get('order_id') || urlParams.get('cf_id');
 
-        // Callback function triggered by our extension helper script
-        window.onPaymentVerified = function(success, errorMsg) {
-            const iconEl = document.getElementById('status-icon');
-            const titleEl = document.getElementById('status-title');
-            const messageEl = document.getElementById('status-message');
-            const retryBtn = document.getElementById('retry-btn');
+        const iconEl = document.getElementById('status-icon');
+        const titleEl = document.getElementById('status-title');
+        const messageEl = document.getElementById('status-message');
+        const retryBtn = document.getElementById('retry-btn');
 
-            if (success) {
-                iconEl.innerText = "✅";
-                titleEl.innerText = "Payment Successful!";
-                messageEl.innerText = "Your credits have been added successfully. You can close this window now.";
-                retryBtn.style.display = "none";
+        if (!orderId) {
+            showError("Missing transaction ID (order_id).");
+        } else {
+            verifyPayment();
+        }
+
+        function showError(errorMsg) {
+            iconEl.innerText = "⚠️";
+            titleEl.innerText = "Verification Failed";
+            messageEl.innerHTML = `We couldn't verify this payment automatically: <b>${errorMsg || "Unknown error"}</b>.<br><br>Please check your internet connection or contact support.`;
+            retryBtn.style.display = "inline-block";
+            retryBtn.onclick = () => {
+                window.location.reload();
+            };
+        }
+
+        async function verifyPayment() {
+            try {
+                // Secure server-side validation using Supabase Edge Function (immune to client tampering)
+                const verifyUrl = "https://bzcjpwamxffkbokxunrj.supabase.co/functions/v1/verify-cashfree-payment";
+                const response = await fetch(verifyUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ orderId: orderId })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || "Payment verification failed.");
+                }
+
+                // If verification succeeded, relay success to Chrome Extension
+                const extId = localStorage.getItem('checkout_ext_id') || "nffkekgmimnjlpjfnnnhhpcdcdhgmhaf";
                 
-                // Automatically close the window after a brief delay
-                setTimeout(() => {
-                    window.close();
-                }, 3000);
-            } else {
-                iconEl.innerText = "⚠️";
-                titleEl.innerText = "Verification Failed";
-                messageEl.innerHTML = `We couldn't verify this payment automatically: <b>${errorMsg || "Unknown error"}</b>.<br><br>Please check your internet connection or click below to retry.`;
-                retryBtn.style.display = "inline-block";
-                retryBtn.onclick = () => {
-                    window.location.reload();
-                };
+                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage(extId, {
+                        type: 'CASHFREE_SUCCESS',
+                        paymentId: orderId,
+                        userId: data.userId,
+                        credits: data.credits,
+                        days: data.days,
+                        price: data.amount,
+                        planName: data.planName
+                    }, (response) => {
+                        // Display success state
+                        iconEl.innerText = "✅";
+                        titleEl.innerText = "Payment Successful!";
+                        messageEl.innerText = "Your credits have been added successfully. You can close this window now.";
+                        retryBtn.style.display = "none";
+                        
+                        setTimeout(() => {
+                            window.close();
+                        }, 3000);
+                    });
+                } else {
+                    // Fallback display if not opened from extension flow directly
+                    iconEl.innerText = "✅";
+                    titleEl.innerText = "Payment Verified!";
+                    messageEl.innerText = "Payment verified successfully on server. Please refresh your Meesho extension tab to see your updated balance.";
+                    retryBtn.style.display = "none";
+                }
+
+            } catch (err) {
+                showError(err.message);
             }
-        };
+        }
     </script>
 </body>
 
