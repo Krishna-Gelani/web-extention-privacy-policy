@@ -4,11 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Processing Payment...</title>
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <title>Processing Secure Payment...</title>
     <style>
         body {
-            font-family: sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -25,114 +24,156 @@
             width: 40px;
             height: 40px;
             animation: spin 1s linear infinite;
-            margin-bottom: 20px;
+            margin: 0 auto 20px auto;
         }
 
         @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
         .container {
             text-align: center;
+            max-width: 400px;
+            padding: 30px;
+            border-radius: 12px;
+            background: #111;
+            border: 1px solid #222;
+        }
+
+        h2 {
+            margin: 0 0 10px 0;
+            font-size: 20px;
+            color: #fff;
+        }
+
+        p {
+            margin: 0;
+            font-size: 14px;
+            color: #aaa;
+            line-height: 1.5;
+        }
+
+        .error-msg {
+            color: #ef4444;
+            font-weight: 600;
+            margin-top: 15px;
+            font-size: 13px;
+        }
+
+        .btn-retry {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #9d4edd;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
         }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <div class="loader"></div>
-        <h2>Secure Checkout</h2>
-        <p>Please do not close this window.</p>
+        <div class="loader" id="loader-icon"></div>
+        <h2 id="status-title">Securing Checkout Session</h2>
+        <p id="status-text">Please wait while we connect securely to our payment servers. Do not close this window.</p>
+        <div id="error-container" class="error-msg"></div>
+        <button id="retry-btn" class="btn-retry" style="display: none;" onclick="window.location.reload()">Retry Connection</button>
     </div>
 
     <script>
+        // Extract parameters passed from the chrome extension
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('userId');
-        const userEmail = urlParams.get('userEmail');
-        const userPhone = urlParams.get('userPhone');
-        const keyId = urlParams.get('keyId') || "rzp_live_T2ds8o8cbXH2FE";
-        const extId = urlParams.get('extId') || "nffkekgmimnjlpjfnnnhhpcdcdhgmhaf";
-        const credits = parseInt(urlParams.get('credits')) || 0;
-        const days = parseInt(urlParams.get('days')) || 0;
-        const price = parseFloat(urlParams.get('price')) || 0;
-        const planName = urlParams.get('planName') || '';
+        const userEmail = urlParams.get('userEmail') || 'supplier@meesho.com';
+        const userPhone = urlParams.get('userPhone') || '9999999999';
+        const planName = urlParams.get('planName');
         const appliedPromoCode = urlParams.get('appliedPromoCode') || '';
-
-        if (!keyId || !price) {
-            alert('Invalid checkout parameters.');
-            window.close();
+        
+        // Save the Extension ID in localStorage to relay messaging on success redirection
+        const extId = urlParams.get('extId');
+        if (extId) {
+            localStorage.setItem('checkout_ext_id', extId);
         }
 
-        const options = {
-            "key": keyId,
-            "amount": Math.round(price * 100), // Razorpay takes amount in paise (must be integer)
-            "currency": "INR",
-            "name": "Meesho AI Optimizer",
-            "description": planName || (days > 0 ? `Unlimited Access for ${days} Days` : `Purchase ${credits} Credits`),
-            "image": "https://krishna-gelani.github.io/web-extention-privacy-policy/icon.png", // Fallback icon
-            "handler": function (response) {
-                const paymentData = {
-                    type: 'RAZORPAY_SUCCESS',
-                    paymentId: response.razorpay_payment_id,
-                    userId: userId,
-                    credits: credits,
-                    days: days,
-                    price: price,
-                    planName: planName,
-                    appliedPromoCode: appliedPromoCode
-                };
+        const errorContainer = document.getElementById('error-container');
+        const retryBtn = document.getElementById('retry-btn');
+        const statusText = document.getElementById('status-text');
+        const statusTitle = document.getElementById('status-title');
+        const loaderIcon = document.getElementById('loader-icon');
 
-                window.claimCredits = function () {
-                    document.querySelector('.container').innerHTML = '<div class="loader"></div><h2>Processing...</h2><p>Please wait.</p>';
-                    if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
-                        chrome.runtime.sendMessage(extId, paymentData, function (extResponse) {
-                            if (chrome.runtime.lastError || !extResponse) {
-                                document.querySelector('.container').innerHTML = '<h2>⚠️ Extension Disconnected</h2><p>Please <b>REFRESH your Meesho page</b> and then click below to try again.</p><br><button onclick="window.claimCredits()" style="padding:10px 20px; background:#9d4edd; color:white; border:none; border-radius:5px; cursor:pointer;">Claim Credits</button>';
-                            } else if (!extResponse.success) {
-                                document.querySelector('.container').innerHTML = `<h2>⚠️ Payment Log Error</h2><p>${extResponse.error || "Unknown error occurred"}</p><p>Please contact support or click claim to retry.</p><br><button onclick="window.claimCredits()" style="padding:10px 20px; background:#9d4edd; color:white; border:none; border-radius:5px; cursor:pointer;">Retry Claim</button>`;
-                            } else {
-                                document.querySelector('.container').innerHTML = '<h2>✅ Payment Successful!</h2><p>Your credits have been added. You can close this window.</p>';
-                                setTimeout(() => window.close(), 3000);
-                            }
+        if (!userId || !planName) {
+            showError('Invalid checkout configuration. Missing parameters.');
+        } else {
+            initializeSecurePayment();
+        }
+
+        function showError(msg) {
+            loaderIcon.style.display = 'none';
+            statusTitle.innerText = 'Checkout Error';
+            statusText.innerText = 'We encountered an error setting up your secure checkout session.';
+            errorContainer.innerText = msg;
+            retryBtn.style.display = 'inline-block';
+        }
+
+        async function initializeSecurePayment() {
+            try {
+                // Call Supabase Edge Function to securely create the Cashfree Order
+                // Using server-side pricing mapping to prevent client manipulation.
+                const edgeFunctionUrl = "https://bzcjpwamxffkbokxunrj.supabase.co/functions/v1/create-cashfree-order";
+                
+                const response = await fetch(edgeFunctionUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        userId: userId,
+                        planName: planName,
+                        userEmail: userEmail,
+                        userPhone: userPhone,
+                        appliedPromoCode: appliedPromoCode
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || "Failed to establish secure payment session.");
+                }
+
+                // Dynamically inject Cashfree JS SDK
+                statusTitle.innerText = 'Redirecting to Cashfree';
+                statusText.innerText = 'Setting up gateway payment overlay...';
+
+                const script = document.createElement('script');
+                script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
+                script.onload = function () {
+                    try {
+                        const cashfree = Cashfree({
+                            mode: data.is_sandbox ? "sandbox" : "production"
                         });
-                    } else {
-                        document.querySelector('.container').innerHTML = '<h2>⚠️ Error</h2><p>Chrome extension API not found. Please contact support.</p>';
+                        
+                        // Launch checkout flow using payment_session_id returned by server
+                        cashfree.checkout({
+                            paymentSessionId: data.payment_session_id,
+                            returnUrl: `https://krishna-gelani.github.io/web-extention-privacy-policy/checkout-success.html?order_id={order_id}`
+                        });
+                    } catch (sdkErr) {
+                        showError("Cashfree SDK Initialization failed: " + sdkErr.message);
                     }
                 };
+                script.onerror = function () {
+                    showError("Failed to load Cashfree Gateway SDK. Please check your internet connection.");
+                };
+                document.head.appendChild(script);
 
-                // Trigger claim immediately on success
-                window.claimCredits();
-            },
-            "prefill": {
-                "name": "Meesho Seller",
-                "email": userEmail,
-                "contact": userPhone
-            },
-            "theme": {
-                "color": "#9d4edd"
-            },
-            "modal": {
-                "ondismiss": function () {
-                    window.close(); // Close the popup if user cancels
-                }
+            } catch (err) {
+                showError(err.message);
             }
-        };
-
-        // Launch Razorpay
-        const rzp = new Razorpay(options);
-        rzp.on('payment.failed', function (response) {
-            alert('Payment Failed: ' + response.error.description);
-            window.close();
-        });
-
-        // Open automatically
-        rzp.open();
+        }
     </script>
 </body>
 
